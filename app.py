@@ -32,7 +32,17 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-init_db()
+try:
+    init_db()
+except Exception as _db_err:
+    import streamlit as _st
+    _st.error(
+        f"⚠️ **Cannot connect to MongoDB.**\n\n"
+        f"`{_db_err}`\n\n"
+        f"Set the **MONGODB_URI** environment variable to a valid MongoDB connection string "
+        f"(e.g. a free [MongoDB Atlas](https://cloud.mongodb.com) cluster)."
+    )
+    _st.stop()
 
 # ─── Session-state defaults ────────────────────────────────────────────────────
 def _init():

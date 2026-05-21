@@ -17,7 +17,7 @@ from pymongo.errors import DuplicateKeyError
 
 load_dotenv()
 
-_MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+_MONGODB_URI = os.getenv("MONGODB_URI", "")
 _MONGODB_DB  = os.getenv("MONGODB_DB",  "faqbot")
 
 # Module-level singleton client (thread-safe in pymongo)
@@ -27,7 +27,17 @@ _client: MongoClient | None = None
 def _db():
     global _client
     if _client is None:
-        _client = MongoClient(_MONGODB_URI)
+        if not _MONGODB_URI:
+            raise RuntimeError(
+                "MONGODB_URI environment variable is not set.\n"
+                "Add it in your Render dashboard → Environment, e.g.:\n"
+                "  mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true"
+            )
+        _client = MongoClient(
+            _MONGODB_URI,
+            serverSelectionTimeoutMS=5000,   # fail fast instead of waiting 30 s
+            connectTimeoutMS=5000,
+        )
     return _client[_MONGODB_DB]
 
 
