@@ -1,16 +1,103 @@
 """
-auth.py — Registration, login, and password-hashing helpers using bcrypt.
+auth.py — Registration, login, password helpers, and Google OAuth.
 """
 
+import os
 import re
+import urllib.parse
+
 import bcrypt
+import requests as http_requests
 import streamlit as st
 
 from database import (
     create_user,
     get_user_by_username,
     get_user_by_email,
+    find_or_create_google_user,
 )
+
+# ─────────────────────────────────────────────
+# Google OAuth config  (set in .env)
+# ─────────────────────────────────────────────
+
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID",     "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI",  "http://localhost:8501")
+
+_GOOGLE_AUTH_ENDPOINT  = "https://accounts.google.com/o/oauth2/auth"
+_GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO_URL   = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+
+def google_is_configured() -> bool:
+    """True when both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set."""
+    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+
+def get_google_auth_url() -> str:
+    """Return the Google OAuth 2.0 authorisation URL."""
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "access_type":   "offline",
+        "prompt":        "select_account",
+    }
+    return _GOOGLE_AUTH_ENDPOINT + "?" + urllib.parse.urlencode(params)
+
+
+def exchange_code_for_user(code: str) -> tuple[bool, str, dict | None]:
+    """
+    Exchange the Google authorisation *code* for tokens, fetch the user's
+    profile, then find-or-create the local account.
+
+    Returns (success, message, user_dict_or_None).
+    """
+    try:
+        # Step 1 — exchange code for access token
+        token_resp = http_requests.post(
+            _GOOGLE_TOKEN_ENDPOINT,
+            data={
+                "code":          code,
+                "client_id":     GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri":  GOOGLE_REDIRECT_URI,
+                "grant_type":    "authorization_code",
+            },
+            timeout=10,
+        )
+        token_data = token_resp.json()
+
+        if "access_token" not in token_data:
+            err = token_data.get("error_description") or token_data.get("error", "unknown")
+            return False, f"Google sign-in failed: {err}", None
+
+        # Step 2 — fetch profile
+        userinfo_resp = http_requests.get(
+            _GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+            timeout=10,
+        )
+        info = userinfo_resp.json()
+
+        google_id = info.get("sub", "")
+        email     = info.get("email", "")
+        full_name = info.get("name", "")
+
+        if not google_id:
+            return False, "Could not retrieve your Google account info.", None
+
+        # Step 3 — find or create local user
+        user_row = find_or_create_google_user(google_id, email, full_name)
+        if user_row is None:
+            return False, "Failed to create account — please try again.", None
+
+        return True, f"Welcome, {full_name or email}!", dict(user_row)
+
+    except Exception as exc:
+        return False, f"Google sign-in error: {exc}", None
 
 
 # ─────────────────────────────────────────────
@@ -54,11 +141,10 @@ def _strong_password(pw: str) -> tuple[bool, str]:
 # Public API
 # ─────────────────────────────────────────────
 
-def register_user(full_name: str, username: str, email: str, password: str, confirm: str) -> tuple[bool, str]:
-    """
-    Validate and create a new user.
-    Returns (success, message).
-    """
+def register_user(
+    full_name: str, username: str, email: str, password: str, confirm: str
+) -> tuple[bool, str]:
+    """Validate and create a new user. Returns (success, message)."""
     if not full_name.strip():
         return False, "Full name is required."
     if not _valid_username(username):
@@ -71,7 +157,6 @@ def register_user(full_name: str, username: str, email: str, password: str, conf
     if password != confirm:
         return False, "Passwords do not match."
 
-    # Check duplicates
     if get_user_by_username(username):
         return False, f"Username '{username}' is already taken."
     if get_user_by_email(email):
@@ -83,7 +168,9 @@ def register_user(full_name: str, username: str, email: str, password: str, conf
     return True, "Account created successfully! Please log in."
 
 
-def login_user(username_or_email: str, password: str) -> tuple[bool, str, dict | None]:
+def login_user(
+    username_or_email: str, password: str
+) -> tuple[bool, str, dict | None]:
     """
     Authenticate by username OR email.
     Returns (success, message, user_dict_or_None).
@@ -93,11 +180,19 @@ def login_user(username_or_email: str, password: str) -> tuple[bool, str, dict |
 
     if not user:
         return False, "Account not found. Check your username / e-mail.", None
+
+    # Google-only account — no local password set
+    if user["password_hash"] == "GOOGLE_OAUTH":
+        return (
+            False,
+            "This account uses Google Sign-In. Please click 'Sign in with Google'.",
+            None,
+        )
+
     if not verify_password(password, user["password_hash"]):
         return False, "Incorrect password.", None
 
-    user_dict = dict(user)
-    return True, f"Welcome back, {user['full_name'] or user['username']}!", user_dict
+    return True, f"Welcome back, {user['full_name'] or user['username']}!", dict(user)
 
 
 # ─────────────────────────────────────────────
@@ -107,7 +202,6 @@ def login_user(username_or_email: str, password: str) -> tuple[bool, str, dict |
 def set_session(user: dict) -> None:
     st.session_state.authenticated = True
     st.session_state.user = user
-    st.session_state.theme = user.get("theme", "dark")
 
 
 def logout() -> None:

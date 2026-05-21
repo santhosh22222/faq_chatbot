@@ -14,7 +14,10 @@ from database import (
     init_db, create_session, get_sessions, update_session_title,
     delete_session, add_message, get_messages,
 )
-from auth import register_user, login_user, set_session, logout, is_authenticated
+from auth import (
+    register_user, login_user, set_session, logout, is_authenticated,
+    get_google_auth_url, exchange_code_for_user, google_is_configured,
+)
 from groq_client import stream_chat, infer_title, DEFAULT_MODEL
 from prompts import (
     DOMAIN_META, DOMAIN_KEYS, DOMAIN_DISPLAY_NAMES,
@@ -345,13 +348,13 @@ def _new_chat():
     st.session_state.pending_starter    = None
     st.session_state.total_tokens       = 0
 
-def _ensure_session() -> int:
+def _ensure_session() -> str:
     if st.session_state.current_session_id is None:
         sid = create_session(st.session_state.user["id"], st.session_state.domain)
         st.session_state.current_session_id = sid
     return st.session_state.current_session_id
 
-def _load_session(sid: int):
+def _load_session(sid: str):
     st.session_state.current_session_id = sid
     st.session_state.messages = [
         {"role": r["role"], "content": r["content"]}
@@ -445,6 +448,47 @@ def show_auth():
             f'AI-powered FAQ assistant for every department</div>'
             f'</div>', unsafe_allow_html=True)
 
+        # ── Google Sign-In (shown only when credentials are configured) ─────────
+        if google_is_configured():
+            gurl = get_google_auth_url()
+            st.markdown(
+                f'<div style="margin:10px 0 4px;text-align:center;">'
+                f'<a href="{gurl}" target="_self" style="'
+                f'display:inline-flex;align-items:center;gap:10px;'
+                f'padding:10px 22px;background:#ffffff;color:#1f1f1f;'
+                f'border-radius:8px;text-decoration:none;'
+                f'font-size:14px;font-weight:500;font-family:Inter,sans-serif;'
+                f'border:1px solid #dadce0;box-shadow:0 1px 3px rgba(0,0,0,.18);'
+                f'white-space:nowrap;">'
+                f'<svg width="18" height="18" viewBox="0 0 48 48">'
+                f'<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85'
+                f'C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19'
+                f'C12.43 13.72 17.74 9.5 24 9.5z"/>'
+                f'<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02'
+                f'h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6'
+                f'c4.51-4.18 7.09-10.36 7.09-17.65z"/>'
+                f'<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59'
+                f's.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24'
+                f'c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>'
+                f'<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6'
+                f'c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91'
+                f'l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>'
+                f'</svg>'
+                f'Sign in with Google'
+                f'</a></div>',
+                unsafe_allow_html=True,
+            )
+            # "or" divider
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:12px;margin:14px 0 10px;">'
+                f'<div style="flex:1;height:1px;background:{t["border"]};"></div>'
+                f'<span style="color:{t["muted"]};font-size:.75rem;letter-spacing:.05em;">OR</span>'
+                f'<div style="flex:1;height:1px;background:{t["border"]};"></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Tab buttons (Sign In / Create Account) ────────────────────────────
         c1, c2 = st.columns(2)
         with c1:
             if st.button("🔐  Sign In", use_container_width=True,
@@ -457,6 +501,9 @@ def show_auth():
                          key="tab_reg"):
                 st.session_state.auth_tab="register"; st.rerun()
         st.write("")
+
+        if err := st.session_state.pop("google_auth_error", None):
+            st.error(err)
 
         if st.session_state.auth_tab == "login":
             if msg := st.session_state.pop("reg_success_msg", None):
@@ -728,6 +775,28 @@ def show_chat():
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
+    # ── Handle Google OAuth callback (?code= appended by Google redirect) ─────
+    params = st.query_params
+    if not is_authenticated():
+        if "code" in params:
+            code = params["code"]
+            st.query_params.clear()          # remove ?code=… from the URL
+            with st.spinner("Signing you in with Google…"):
+                ok, msg, user = exchange_code_for_user(code)
+            if ok:
+                set_session(user)
+                st.rerun()
+            else:
+                st.session_state.google_auth_error = msg
+                st.rerun()
+        elif "error" in params:
+            err = params.get("error", "unknown")
+            st.query_params.clear()
+            st.session_state.google_auth_error = (
+                f"Google sign-in was cancelled or denied ({err})."
+            )
+            st.rerun()
+
     if not is_authenticated(): show_auth()
     else:                      show_chat()
 
