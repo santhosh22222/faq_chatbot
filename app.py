@@ -271,21 +271,28 @@ function go(){
         ta.style.setProperty('outline','none','important');
         ta.style.setProperty('box-shadow','none','important');
       }
-      /* Send button — override the purple emotion style */
-      var sb2=ci.querySelector('button[data-testid="stChatInputSubmitButton"]');
+      /* Send button — try testid first, fall back to any button in container */
+      var sb2=ci.querySelector('button[data-testid="stChatInputSubmitButton"]')
+             ||ci.querySelector('button');
       if(sb2){
         sb2.style.setProperty('background',pri,'important');
         sb2.style.setProperty('background-color',pri,'important');
         sb2.style.setProperty('border','none','important');
         sb2.style.setProperty('border-radius','8px','important');
-        sb2.style.setProperty('width','32px','important');
-        sb2.style.setProperty('height','32px','important');
-        sb2.style.setProperty('min-width','32px','important');
+        sb2.style.setProperty('width','34px','important');
+        sb2.style.setProperty('height','34px','important');
+        sb2.style.setProperty('min-width','34px','important');
+        sb2.style.setProperty('max-width','34px','important');
         sb2.style.setProperty('padding','0','important');
         sb2.style.setProperty('flex-shrink','0','important');
-        sb2.querySelectorAll('svg,path').forEach(function(el){
+        sb2.style.setProperty('display','flex','important');
+        sb2.style.setProperty('align-items','center','important');
+        sb2.style.setProperty('justify-content','center','important');
+        sb2.style.setProperty('cursor','pointer','important');
+        sb2.querySelectorAll('svg,path,circle,rect').forEach(function(el){
           el.style.setProperty('fill',priTxt,'important');
           el.style.setProperty('stroke',priTxt,'important');
+          el.style.setProperty('color',priTxt,'important');
         });
       }
     }

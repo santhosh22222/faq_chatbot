@@ -174,8 +174,10 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
     border-radius:    14px !important;
     box-shadow:       none !important;
     padding:          6px 8px 6px 16px !important;
-    align-items:      flex-end !important;
-    min-height:       50px !important;
+    align-items:      center !important;
+    display:          flex !important;
+    min-height:       52px !important;
+    max-height:       160px !important;
 }}
 [data-testid="stChatInput"] textarea {{
     background:   transparent !important;
@@ -189,28 +191,37 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
     max-height:   110px !important;
     overflow-y:   auto !important;
     resize:       none !important;
+    flex:         1 !important;
 }}
 [data-testid="stChatInputContainer"]:focus-within {{
     border-color: {c['border']} !important;
     box-shadow:   none !important;
 }}
-/* Send button */
-button[data-testid="stChatInputSubmitButton"] {{
+/* Send button — target by testid AND as last button in container */
+button[data-testid="stChatInputSubmitButton"],
+[data-testid="stChatInputContainer"] button {{
     background:       {c['primary']} !important;
     background-color: {c['primary']} !important;
     border:           none !important;
     border-radius:    8px !important;
-    width:            32px !important;
-    height:           32px !important;
-    min-width:        32px !important;
+    width:            34px !important;
+    height:           34px !important;
+    min-width:        34px !important;
+    max-width:        34px !important;
     padding:          0 !important;
-    margin-bottom:    2px !important;
     flex-shrink:      0 !important;
+    display:          flex !important;
+    align-items:      center !important;
+    justify-content:  center !important;
+    cursor:           pointer !important;
 }}
 button[data-testid="stChatInputSubmitButton"] svg,
-button[data-testid="stChatInputSubmitButton"] path {{
+button[data-testid="stChatInputSubmitButton"] path,
+[data-testid="stChatInputContainer"] button svg,
+[data-testid="stChatInputContainer"] button path {{
     fill:   {c['pill_active_text']} !important;
     stroke: {c['pill_active_text']} !important;
+    color:  {c['pill_active_text']} !important;
 }}
 
 /* ═══════════════════════════════════════════════════
