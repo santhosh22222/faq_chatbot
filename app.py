@@ -52,7 +52,6 @@ def _init():
         "domain":              "general",
         "current_session_id":  None,
         "messages":            [],
-        "pending_starter":     None,
         "show_faq_dialog":     False,
         "auth_tab":            "login",
         "show_share":          False,
@@ -355,7 +354,6 @@ def _new_chat():
     st.session_state.current_session_id = None
     st.session_state.messages           = []
     st.session_state.show_share         = False
-    st.session_state.pending_starter    = None
     st.session_state.total_tokens       = 0
 
 def _ensure_session() -> str:
@@ -704,26 +702,20 @@ def show_export_bar():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GREETING / EMPTY STATE
+# EMPTY STATE  (plain — just a centered prompt, no chips)
 # ══════════════════════════════════════════════════════════════════════════════
 def show_empty():
-    t     = get_tokens()
-    meta  = DOMAIN_META[st.session_state.domain]
-    uname = (st.session_state.user.get("full_name") or
-             st.session_state.user.get("username","there")).split()[0].capitalize()
+    t = get_tokens()
     st.markdown(
-        f'<div class="greet-wrap">'
-        f'<div class="greet-title">Hi {uname}, how can I help?</div>'
-        f'<div class="greet-sub">{meta["description"]}</div>'
-        f'</div>', unsafe_allow_html=True)
-    ca, cb = st.columns(2)
-    for i, s in enumerate(meta["starters"][:4]):
-        with (ca if i%2==0 else cb):
-            if st.button(s, key=f"chip_{i}", use_container_width=True):
-                st.session_state.pending_starter = s; st.rerun()
-    st.markdown(
-        f'<p style="text-align:center;font-size:.8rem;color:{t["muted"]};margin-top:12px;">'
-        f'Pick a domain in the sidebar · or type below ↓</p>', unsafe_allow_html=True)
+        f'<div style="display:flex;flex-direction:column;align-items:center;'
+        f'justify-content:center;height:55vh;">'
+        f'<div style="font-size:2rem;margin-bottom:10px;">🤖</div>'
+        f'<div style="font-size:1.4rem;font-weight:700;color:{t["text"]};margin-bottom:6px;">'
+        f'How can I help you?</div>'
+        f'<div style="font-size:.9rem;color:{t["muted"]};">Type a message below to start chatting.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -737,16 +729,7 @@ def show_chat():
     if st.session_state.show_faq_dialog:
         show_faq_dialog()
 
-    # Pending starter chip
-    if st.session_state.pending_starter:
-        s = st.session_state.pending_starter
-        st.session_state.pending_starter = None
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(s)
-        _send(s)
-        st.rerun(); return
-
-    # Empty / greeting state
+    # Empty state
     if st.session_state.current_session_id is None:
         show_empty()
         if prompt := st.chat_input("Message FAQBot…"):
