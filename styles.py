@@ -162,7 +162,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
 }}
 
 /* ═══════════════════════════════════════════════════
-   CHAT INPUT
+   CHAT INPUT  — Claude-style minimal
 ═══════════════════════════════════════════════════ */
 [data-testid="stChatInput"],
 [data-testid="stChatInput"] > div {{
@@ -170,14 +170,19 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
 }}
 [data-testid="stChatInputContainer"] {{
     background-color: {c['input']} !important;
-    border:           1.5px solid {c['border']} !important;
-    border-radius:    14px !important;
+    border:           1px solid {c['border']} !important;
+    border-radius:    12px !important;
     box-shadow:       none !important;
-    padding:          6px 8px 6px 16px !important;
+    padding:          10px 10px 10px 18px !important;
     align-items:      center !important;
     display:          flex !important;
-    min-height:       52px !important;
+    min-height:       48px !important;
     max-height:       160px !important;
+    transition:       border-color .15s !important;
+}}
+[data-testid="stChatInputContainer"]:focus-within {{
+    border-color: #444444 !important;
+    box-shadow:   none !important;
 }}
 [data-testid="stChatInput"] textarea {{
     background:   transparent !important;
@@ -185,43 +190,45 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
     box-shadow:   none !important;
     outline:      none !important;
     font-size:    14px !important;
-    line-height:  1.5 !important;
+    line-height:  1.6 !important;
     color:        {c['text']} !important;
-    padding:      8px 0 !important;
-    max-height:   110px !important;
+    padding:      0 !important;
+    max-height:   120px !important;
     overflow-y:   auto !important;
     resize:       none !important;
     flex:         1 !important;
 }}
-[data-testid="stChatInputContainer"]:focus-within {{
-    border-color: {c['border']} !important;
-    box-shadow:   none !important;
-}}
-/* Send button — target by testid AND as last button in container */
+/* Send button — minimal, transparent, just the icon */
 button[data-testid="stChatInputSubmitButton"],
 [data-testid="stChatInputContainer"] button {{
-    background:       {c['primary']} !important;
-    background-color: {c['primary']} !important;
+    background:       transparent !important;
+    background-color: transparent !important;
     border:           none !important;
-    border-radius:    8px !important;
-    width:            34px !important;
-    height:           34px !important;
-    min-width:        34px !important;
-    max-width:        34px !important;
+    border-radius:    6px !important;
+    width:            30px !important;
+    height:           30px !important;
+    min-width:        30px !important;
+    max-width:        30px !important;
     padding:          0 !important;
     flex-shrink:      0 !important;
     display:          flex !important;
     align-items:      center !important;
     justify-content:  center !important;
     cursor:           pointer !important;
+    opacity:          0.6 !important;
+    transition:       opacity .15s !important;
+}}
+button[data-testid="stChatInputSubmitButton"]:hover,
+[data-testid="stChatInputContainer"] button:hover {{
+    opacity: 1 !important;
+    background: rgba(255,255,255,0.08) !important;
 }}
 button[data-testid="stChatInputSubmitButton"] svg,
 button[data-testid="stChatInputSubmitButton"] path,
 [data-testid="stChatInputContainer"] button svg,
 [data-testid="stChatInputContainer"] button path {{
-    fill:   {c['pill_active_text']} !important;
-    stroke: {c['pill_active_text']} !important;
-    color:  {c['pill_active_text']} !important;
+    fill:   {c['text']} !important;
+    stroke: {c['text']} !important;
 }}
 
 /* ═══════════════════════════════════════════════════
