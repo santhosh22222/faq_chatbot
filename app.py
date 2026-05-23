@@ -12,13 +12,13 @@ load_dotenv()
 
 from database import (
     init_db, create_session, get_sessions, update_session_title,
-    delete_session, add_message, get_messages,
+    delete_session, add_message, get_messages, delete_last_messages,
 )
 from auth import (
     register_user, login_user, set_session, logout, is_authenticated,
     get_google_auth_url, exchange_code_for_user, google_is_configured,
 )
-from groq_client import stream_chat, infer_title, DEFAULT_MODEL
+from groq_client import stream_chat, infer_title, DEFAULT_MODEL, AVAILABLE_MODELS
 from prompts import (
     DOMAIN_META, DOMAIN_KEYS, DOMAIN_DISPLAY_NAMES,
     build_messages, build_faq_messages,
@@ -49,13 +49,17 @@ def _init():
     for k, v in {
         "authenticated":       False,
         "user":                None,
+        "theme":               "dark",
         "domain":              "general",
+        "model":               DEFAULT_MODEL,
+        "temperature":         0.7,
         "current_session_id":  None,
         "messages":            [],
         "show_faq_dialog":     False,
         "auth_tab":            "login",
         "show_share":          False,
         "total_tokens":        0,
+        "pending_prompt":      None,
     }.items():
         if k not in st.session_state:
             st.session_state[k] = v
@@ -70,33 +74,34 @@ def _ensure_sidebar_open():
     t   = get_tokens()
     ts  = int(time.time() * 1000)   # unique per render → old instances self-terminate
 
-    txt      = t["text"]
-    sbBg     = t["sidebar"]
-    btnBg    = t["btn_bg"]
-    btnBdr   = t["btn_border"]
-    pri      = t["primary"]
-    priTxt   = t["pill_active_text"]
-    border   = t["border"]
-    muted    = t["muted"]
-    inputBg  = t["input"]
-    bg       = t["bg"]
+    txt            = t["text"]
+    sbBg           = t["sidebar"]
+    btnBg          = t["btn_bg"]
+    btnBdr         = t["btn_border"]
+    pri            = t["primary"]
+    priTxt         = t["primary_text"]
+    border         = t["border"]
+    muted          = t["muted"]
+    inputBg        = t["input"]
+    bg             = t["bg"]
+    chatInputBg    = t["chat_input"]
+    sendBtnBg      = t["send_btn"]
+    sendIconColor  = t["send_icon"]
+    pillActive     = t["pill_active"]
+    pillActiveText = t["pill_active_text"]
 
     # JS template — uses JSVAL_* placeholders; substituted below via .replace()
     _js = """
 (function(){
 var _ts=JSVAL_TS;
-var n=0;
 function go(){
-  n++;if(n>50)return;
   try{
     var d=window.parent.document;
-    var sb=d.querySelector('section[data-testid="stSidebar"]');
-    if(!sb){setTimeout(go,250);return;}
 
     /* Self-terminate if a newer render's JS is already running */
-    var curTs=parseInt(sb.getAttribute('data-faqbot-ts')||'0');
+    var curTs=parseInt((d.body&&d.body.getAttribute('data-faqbot-ts'))||'0');
     if(curTs>_ts)return;
-    sb.setAttribute('data-faqbot-ts',_ts);
+    if(d.body)d.body.setAttribute('data-faqbot-ts',_ts);
 
     /* Theme colours embedded by Python at render time */
     var txt='JSVAL_TXT';
@@ -109,9 +114,292 @@ function go(){
     var muted='JSVAL_MUTED';
     var inputBg='JSVAL_INPUTBG';
     var bg='JSVAL_MAIBG';
+    var chatInputBg='JSVAL_CHATINPUT';
+    var sendBtnBg='JSVAL_SENDBTN';
+    var sendIconColor='JSVAL_SENDICON';
+    var pillActive='JSVAL_PILLACTIVE';
+    var pillActiveText='JSVAL_PILLACTIVETXT';
+
+    /* ══════════════════════════════════════════════
+       BUTTON STYLING — runs on EVERY page
+       (auth page + chat page)
+     ══════════════════════════════════════════════ */
+    var sb=d.querySelector('section[data-testid="stSidebar"]');
+    d.querySelectorAll('button[data-testid^="baseButton"]').forEach(function(btn){
+      try {
+        var S=btn.style;
+        var isPri=btn.getAttribute('data-testid')==='baseButton-primary';
+        var inSB=!!btn.closest('section[data-testid="stSidebar"]');
+        var inSignout=!!btn.closest('.sb-signout-wrap');
+
+        var isAuthPage=!!d.querySelector('.auth-tabs-marker');
+        var isAuthTab=false;
+        var isAuthFormSubmit=false;
+        if(isAuthPage && !inSB){
+          if(btn.closest('[data-testid="stHorizontalBlock"]')){
+            isAuthTab=true;
+          } else if(btn.closest('[data-testid="stForm"]')){
+            isAuthFormSubmit=true;
+          }
+        }
+
+        if(isAuthTab){
+          S.setProperty('background','transparent','important');
+          S.setProperty('background-color','transparent','important');
+          S.setProperty('border','none','important');
+          S.setProperty('box-shadow','none','important');
+          S.setProperty('outline','none','important');
+          S.setProperty('border-radius','0px','important');
+          S.setProperty('font-size','1.05rem','important');
+          S.setProperty('font-weight','600','important');
+          S.setProperty('padding','8px 0px','important');
+          S.setProperty('opacity',isPri?'1':'0.4','important');
+          S.setProperty('color',txt,'important');
+
+          btn.querySelectorAll('*').forEach(function(el){
+            el.style.setProperty('color',txt,'important');
+            el.style.setProperty('background','transparent','important');
+            el.style.setProperty('background-color','transparent','important');
+          });
+          return;
+        }
+
+        if(isAuthFormSubmit){
+          S.setProperty('background','transparent','important');
+          S.setProperty('background-color','transparent','important');
+          S.setProperty('border','1.5px solid '+muted,'important');
+          S.setProperty('color',txt,'important');
+          S.setProperty('border-radius','8px','important');
+          S.setProperty('box-shadow','none','important');
+          S.setProperty('outline','none','important');
+
+          btn.querySelectorAll('*').forEach(function(el){
+            el.style.setProperty('color',txt,'important');
+            el.style.setProperty('background','transparent','important');
+            el.style.setProperty('background-color','transparent','important');
+          });
+
+          if(!btn.getAttribute('data-faqbot-hover-bound')){
+            btn.setAttribute('data-faqbot-hover-bound','true');
+            btn.addEventListener('mouseenter', function(){
+              var hvrVal=(getComputedStyle(d.documentElement).getPropertyValue('--t-hover') || 'rgba(255,255,255,0.08)').trim();
+              btn.style.setProperty('background',hvrVal,'important');
+              btn.style.setProperty('background-color',hvrVal,'important');
+              btn.style.setProperty('border-color',txt,'important');
+            });
+            btn.addEventListener('mouseleave', function(){
+              btn.style.setProperty('background','transparent','important');
+              btn.style.setProperty('background-color','transparent','important');
+              btn.style.setProperty('border-color',muted,'important');
+            });
+          }
+          return;
+        }
+
+        // Bulletproof detection of the theme toggle button
+        var isToggle=false;
+        var txtContent=(btn.innerText||"").trim();
+        var htmlContent=btn.innerHTML||"";
+        if(
+          txtContent.includes('☀️') || 
+          txtContent.includes('🌙') || 
+          txtContent.includes('\u2600') ||
+          txtContent.includes('\u1F319') ||
+          htmlContent.includes('☀️') ||
+          htmlContent.includes('🌙')
+        ) {
+          isToggle=true;
+        }
+        if(!isToggle && inSB && sb){
+          var hbl=btn.closest('[data-testid="stHorizontalBlock"]');
+          if(hbl){
+            var allHbl=sb.querySelectorAll('[data-testid="stHorizontalBlock"]');
+            if(allHbl.length>0 && allHbl[0]===hbl){
+              isToggle=true;
+            }
+          }
+        }
+
+        /* Is this a × delete button? (last column of a stHorizontalBlock) */
+        var isDel=false;
+        if(inSB && !isToggle){
+          var col2=btn.closest('[data-testid="column"]');
+          var hbl2=col2&&col2.closest('[data-testid="stHorizontalBlock"]');
+          if(hbl2 && hbl2.lastElementChild===col2) isDel=true;
+        }
+
+        S.setProperty('outline','none','important');
+        S.setProperty('cursor','pointer','important');
+
+        if(inSB && isDel){
+          S.setProperty('background','transparent','important');
+          S.setProperty('background-color','transparent','important');
+          S.setProperty('border','none','important');
+          S.setProperty('box-shadow','none','important');
+          S.setProperty('color',muted,'important');
+          S.setProperty('width','24px','important');
+          S.setProperty('min-width','24px','important');
+          S.setProperty('height','24px','important');
+          S.setProperty('padding','0','important');
+          S.setProperty('border-radius','50%','important');
+          S.setProperty('font-size','14px','important');
+          S.setProperty('justify-content','center','important');
+          S.setProperty('display','flex','important');
+          S.setProperty('align-items','center','important');
+          S.setProperty('transition','all 0.15s ease','important');
+
+          if(!btn.getAttribute('data-faqbot-hover-bound')){
+            btn.setAttribute('data-faqbot-hover-bound','true');
+            btn.addEventListener('mouseenter', function(){
+              btn.style.setProperty('background','rgba(239, 68, 68, 0.15)','important');
+              btn.style.setProperty('background-color','rgba(239, 68, 68, 0.15)','important');
+              btn.style.setProperty('color','#f87171','important');
+              btn.querySelectorAll('*').forEach(function(el){
+                el.style.setProperty('color','#f87171','important');
+              });
+            });
+            btn.addEventListener('mouseleave', function(){
+              btn.style.setProperty('background','transparent','important');
+              btn.style.setProperty('background-color','transparent','important');
+              btn.style.setProperty('color',muted,'important');
+              btn.querySelectorAll('*').forEach(function(el){
+                el.style.setProperty('color',muted,'important');
+              });
+            });
+          }
+        } else if(inSB){
+          var inHBlock=!!btn.closest('[data-testid="stHorizontalBlock"]');
+          var isActive=btn.innerText && btn.innerText.trim().startsWith('▸') && !isToggle;
+          var isNewChat=btn.innerText && btn.innerText.includes('New chat') && !isToggle;
+
+          
+          var fc2=inSignout?muted:(isActive?pillActiveText:txt);
+          var fs=inHBlock?'12.5px':(inSignout?'13px':'13.5px');
+          var pad=inHBlock?'3px 8px':(inSignout?'8px 14px':'6px 14px');
+          var jc=inSignout?'flex-start':'flex-start';
+          var bgVal=isActive?pillActive:'transparent';
+          
+          if (isToggle) {
+            S.setProperty('width','32px','important');
+            S.setProperty('min-width','32px','important');
+            S.setProperty('height','32px','important');
+            S.setProperty('padding','0','important');
+            S.setProperty('border-radius','50%','important');
+            S.setProperty('display','inline-flex','important');
+            S.setProperty('align-items','center','important');
+            S.setProperty('justify-content','center','important');
+            S.setProperty('background','transparent','important');
+            S.setProperty('background-color','transparent','important');
+            S.setProperty('border','none','important');
+            S.setProperty('box-shadow','none','important');
+            S.setProperty('color',txt,'important');
+            S.setProperty('margin-top','6px','important');
+          } else if (isNewChat) {
+            S.setProperty('background',btnBg,'important');
+            S.setProperty('background-color',btnBg,'important');
+            S.setProperty('border','1px solid '+btnBdr,'important');
+            S.setProperty('border-radius','20px','important');
+            S.setProperty('padding','10px 16px','important');
+            S.setProperty('justify-content','center','important');
+            S.setProperty('display','flex','important');
+            S.setProperty('align-items','center','important');
+            S.setProperty('width','100%','important');
+            S.setProperty('color',txt,'important');
+            S.setProperty('font-size','14px','important');
+            S.setProperty('font-weight','500','important');
+          } else {
+            S.setProperty('background',bgVal,'important');
+            S.setProperty('background-color',bgVal,'important');
+            S.setProperty('border','none','important');
+            S.setProperty('box-shadow','none','important');
+            S.setProperty('color',fc2,'important');
+            S.setProperty('font-size',fs,'important');
+            S.setProperty('font-weight',inSignout?'500':(isActive?'600':'400'),'important');
+            S.setProperty('padding',pad,'important');
+            S.setProperty('border-radius','8px','important');
+            S.setProperty('width','100%','important');
+            S.setProperty('white-space','nowrap','important');
+            S.setProperty('overflow','hidden','important');
+            S.setProperty('text-overflow','ellipsis','important');
+            S.setProperty('text-align','left','important');
+            S.setProperty('display','flex','important');
+            S.setProperty('align-items','center','important');
+            S.setProperty('justify-content',jc,'important');
+            S.setProperty('min-height','unset','important');
+            S.setProperty('height','auto','important');
+            S.setProperty('line-height','1.3','important');
+          }
+        } else {
+          /* Main content buttons (auth + chat page) */
+          var bg2=isPri?pri:btnBg;
+          var fg2=isPri?priTxt:txt;
+          var bd2=isPri?pri:btnBdr;
+          S.setProperty('background',bg2,'important');
+          S.setProperty('background-color',bg2,'important');
+          S.setProperty('border','1px solid '+bd2,'important');
+          S.setProperty('color',fg2,'important');
+          S.setProperty('border-radius','8px','important');
+          S.setProperty('font-weight',isPri?'600':'500','important');
+          S.setProperty('box-shadow','none','important');
+        }
+
+        /* Style ALL child elements */
+        var tc=inSB?(inSignout?muted:(isDel?muted:(isActive?pillActiveText:txt))):(isPri?priTxt:txt);
+        if(inSB && isNewChat) tc = txt;
+        if(inSB && isToggle) tc = txt;
+        btn.querySelectorAll('*').forEach(function(el){
+          if (isToggle) {
+            el.style.setProperty('margin','0','important');
+            el.style.setProperty('padding','0','important');
+            el.style.setProperty('display','flex','important');
+            el.style.setProperty('align-items','center','important');
+            el.style.setProperty('justify-content','center','important');
+            el.style.setProperty('line-height','1','important');
+            el.style.setProperty('color',tc,'important');
+            if (el.tagName === 'IMG' || el.tagName === 'svg' || el.tagName === 'SVG') {
+              el.style.setProperty('width','18px','important');
+              el.style.setProperty('height','18px','important');
+              el.style.setProperty('max-width','18px','important');
+              el.style.setProperty('max-height','18px','important');
+            } else {
+              el.style.setProperty('width','100%','important');
+              el.style.setProperty('height','100%','important');
+            }
+          } else {
+            el.style.setProperty('color',tc,'important');
+            el.style.setProperty('background','transparent','important');
+            el.style.setProperty('background-color','transparent','important');
+            if(inSB){
+              el.style.setProperty('white-space','nowrap','important');
+              el.style.setProperty('overflow','hidden','important');
+              el.style.setProperty('text-overflow','ellipsis','important');
+              el.style.setProperty('max-width','100%','important');
+            }
+          }
+        });
+      } catch(e) {}
+    });
+
+    /* Password / visibility-toggle buttons */
+    d.querySelectorAll('[data-testid="stTextInput"] button,[data-baseweb="input"] button').forEach(function(btn){
+      btn.style.setProperty('background','transparent','important');
+      btn.style.setProperty('background-color','transparent','important');
+      btn.style.setProperty('border','none','important');
+      btn.style.setProperty('box-shadow','none','important');
+      btn.style.setProperty('outline','none','important');
+      btn.querySelectorAll('svg,path').forEach(function(el){
+        el.style.setProperty('fill',muted,'important');
+        el.style.setProperty('stroke',muted,'important');
+      });
+    });
+
+    /* ══════════════════════════════════════════════
+       SIDEBAR — only when sidebar exists
+    ══════════════════════════════════════════════ */
+    var sb=d.querySelector('section[data-testid="stSidebar"]');
+    if(!sb){setTimeout(go,300);return;}
 
     /* ── Pin sidebar ── */
-    sb.style.setProperty('transform','translateX(0px)','important');
     if(sb.getAttribute('aria-expanded')==='false'){
       var cc=d.querySelector('[data-testid="collapsedControl"]');
       if(cc)cc.click();
@@ -140,159 +428,109 @@ function go(){
         tbs.forEach(function(e){e.classList.remove('sb-signout-wrap');});
         var lb=tbs[tbs.length-1];
         lb.classList.add('sb-signout-wrap');
-        lb.style.setProperty('position','fixed','important');
-        lb.style.setProperty('bottom','0','important');
-        lb.style.setProperty('left','0','important');
-        lb.style.setProperty('width','264px','important');
-        lb.style.setProperty('z-index','100','important');
-        lb.style.setProperty('background',sbBg,'important');
-        lb.style.setProperty('background-color',sbBg,'important');
-        lb.style.setProperty('padding','2px 8px 8px','important');
         var pv=lb.previousElementSibling;
         if(pv){
           pv.classList.add('sb-bottom-wrap');
-          pv.style.setProperty('position','fixed','important');
-          pv.style.setProperty('bottom','42px','important');
-          pv.style.setProperty('left','0','important');
-          pv.style.setProperty('width','264px','important');
-          pv.style.setProperty('z-index','99','important');
-          pv.style.setProperty('background',sbBg,'important');
-          pv.style.setProperty('background-color',sbBg,'important');
-          pv.style.setProperty('border-top','1px solid '+border,'important');
         }
       }
     }
 
-    /* ── Style ALL Streamlit buttons via inline !important ──
-       inline !important beats emotion-generated stylesheet rules */
-    d.querySelectorAll('button[data-testid^="baseButton"]').forEach(function(btn){
-      var S=btn.style;
-      var isPri=btn.getAttribute('data-testid')==='baseButton-primary';
-      var inSB=!!btn.closest('section[data-testid="stSidebar"]');
-      var inSignout=!!btn.closest('.sb-signout-wrap');
-
-      /* Is this a × delete button? (last column of a stHorizontalBlock) */
-      var isDel=false;
-      if(inSB){
-        var col2=btn.closest('[data-testid="column"]');
-        var hbl=col2&&col2.closest('[data-testid="stHorizontalBlock"]');
-        if(hbl && hbl.lastElementChild===col2) isDel=true;
-      }
-
-      S.setProperty('outline','none','important');
-      S.setProperty('cursor','pointer','important');
-
-      if(inSB && isDel){
-        S.setProperty('background','transparent','important');
-        S.setProperty('background-color','transparent','important');
-        S.setProperty('border','none','important');
-        S.setProperty('box-shadow','none','important');
-        S.setProperty('color',txt,'important');
-        S.setProperty('width','26px','important');
-        S.setProperty('min-width','26px','important');
-        S.setProperty('height','26px','important');
-        S.setProperty('padding','0','important');
-        S.setProperty('border-radius','6px','important');
-        S.setProperty('font-size','14px','important');
-        S.setProperty('justify-content','center','important');
-        S.setProperty('display','flex','important');
-        S.setProperty('align-items','center','important');
-      } else if(inSB){
-        /* History items live inside stHorizontalBlock; action buttons do not */
-        var inHBlock=!!btn.closest('[data-testid="stHorizontalBlock"]');
-        var fc2=inSignout?muted:txt;
-        var fs=inHBlock?'12.5px':(inSignout?'12.5px':'13.5px');
-        var pad=inHBlock?'3px 8px':'6px 14px';
-        var jc=inSignout?'center':'flex-start';
-        S.setProperty('background','transparent','important');
-        S.setProperty('background-color','transparent','important');
-        S.setProperty('border','none','important');
-        S.setProperty('box-shadow','none','important');
-        S.setProperty('color',fc2,'important');
-        S.setProperty('font-size',fs,'important');
-        S.setProperty('font-weight','400','important');
-        S.setProperty('padding',pad,'important');
-        S.setProperty('border-radius','6px','important');
-        S.setProperty('width','100%','important');
-        S.setProperty('white-space','nowrap','important');
-        S.setProperty('overflow','hidden','important');
-        S.setProperty('text-overflow','ellipsis','important');
-        S.setProperty('text-align','left','important');
-        S.setProperty('display','flex','important');
-        S.setProperty('align-items','center','important');
-        S.setProperty('justify-content',jc,'important');
-        S.setProperty('min-height','unset','important');
-        S.setProperty('height','auto','important');
-        S.setProperty('line-height','1.3','important');
-      } else {
-        var bg2=isPri?pri:btnBg;
-        var fg2=isPri?priTxt:txt;
-        var bd2=isPri?pri:btnBdr;
-        S.setProperty('background',bg2,'important');
-        S.setProperty('background-color',bg2,'important');
-        S.setProperty('border','1px solid '+bd2,'important');
-        S.setProperty('color',fg2,'important');
-        S.setProperty('border-radius','8px','important');
-        S.setProperty('font-weight','500','important');
-        S.setProperty('box-shadow','none','important');
-      }
-
-      /* Style ALL child elements — catches nested <div> Streamlit wraps text in */
-      var tc=inSB?(inSignout?muted:txt):(isPri?priTxt:txt);
-      btn.querySelectorAll('*').forEach(function(el){
-        el.style.setProperty('color',tc,'important');
+    /* ── Chat input ── */
+    var ci=d.querySelector('[data-testid="stChatInput"] > div')
+         ||d.querySelector('[data-testid="stChatInputContainer"]');
+    if(ci){
+      ci.style.setProperty('background',chatInputBg,'important');
+      ci.style.setProperty('background-color',chatInputBg,'important');
+      ci.style.setProperty('border','1px solid '+border,'important');
+      ci.style.setProperty('border-radius','24px','important');
+      ci.style.setProperty('box-shadow','none','important');
+      ci.style.setProperty('outline','none','important');
+      ci.style.setProperty('align-items','center','important');
+      ci.style.setProperty('display','flex','important');
+      ci.style.setProperty('padding','8px 8px 8px 18px','important');
+      ci.style.setProperty('min-height','48px','important');
+      ci.style.setProperty('gap','12px','important');
+      
+      /* Make all wrapper elements inside completely transparent */
+      ci.querySelectorAll('*').forEach(function(el){
+        el.style.setProperty('outline','none','important');
+        el.style.setProperty('box-shadow','none','important');
         el.style.setProperty('background','transparent','important');
         el.style.setProperty('background-color','transparent','important');
-        if(inSB){
-          el.style.setProperty('white-space','nowrap','important');
-          el.style.setProperty('overflow','hidden','important');
-          el.style.setProperty('text-overflow','ellipsis','important');
-          el.style.setProperty('max-width','100%','important');
-        }
+        el.style.setProperty('border','none','important');
       });
-    });
-
-    /* ── Chat input ── */
-    var ci=d.querySelector('[data-testid="stChatInputContainer"]');
-    if(ci){
-      ci.style.setProperty('background',inputBg,'important');
-      ci.style.setProperty('background-color',inputBg,'important');
-      ci.style.setProperty('border','1.5px solid '+border,'important');
-      ci.style.setProperty('border-radius','14px','important');
-      ci.style.setProperty('box-shadow','none','important');
-      ci.style.setProperty('align-items','flex-end','important');
+      
       var ta=ci.querySelector('textarea');
       if(ta){
+        // Loop up to clear all parent wrapper backgrounds and borders
+        var parentDiv = ta.parentElement;
+        while(parentDiv && parentDiv !== ci) {
+          parentDiv.style.setProperty('background','transparent','important');
+          parentDiv.style.setProperty('background-color','transparent','important');
+          parentDiv.style.setProperty('border','none','important');
+          parentDiv.style.setProperty('box-shadow','none','important');
+          parentDiv = parentDiv.parentElement;
+        }
+
         ta.style.setProperty('color',txt,'important');
         ta.style.setProperty('background','transparent','important');
-        ta.style.setProperty('max-height','110px','important');
+        ta.style.setProperty('background-color','transparent','important');
+        ta.style.setProperty('max-height','140px','important');
         ta.style.setProperty('overflow-y','auto','important');
         ta.style.setProperty('resize','none','important');
         ta.style.setProperty('outline','none','important');
         ta.style.setProperty('box-shadow','none','important');
+        ta.style.setProperty('border','none','important');
+        ta.style.setProperty('padding','4px 0','important');
+        ta.style.setProperty('font-size','15px','important');
+        ta.style.setProperty('line-height','1.6','important');
+        ta.style.setProperty('flex','1','important');
+        
+        /* Re-apply on focus so Streamlit can't override our styles */
+        ta.addEventListener('focus',function(){
+          ta.style.setProperty('outline','none','important');
+          ta.style.setProperty('box-shadow','none','important');
+          ci.style.setProperty('border','1px solid '+muted,'important');
+          ci.style.setProperty('box-shadow','none','important');
+          ci.style.setProperty('background',chatInputBg,'important');
+          ci.style.setProperty('background-color',chatInputBg,'important');
+          
+          // Double check transparent parents on focus
+          var pDiv = ta.parentElement;
+          while(pDiv && pDiv !== ci) {
+            pDiv.style.setProperty('background','transparent','important');
+            pDiv.style.setProperty('background-color','transparent','important');
+            pDiv.style.setProperty('border','none','important');
+            pDiv.style.setProperty('box-shadow','none','important');
+            pDiv = pDiv.parentElement;
+          }
+        },{passive:true});
       }
-      /* Send button — minimal transparent style, icon only */
+      /* Send button — circular, theme-aware */
       var sb2=ci.querySelector('button[data-testid="stChatInputSubmitButton"]')
              ||ci.querySelector('button');
       if(sb2){
-        sb2.style.setProperty('background','transparent','important');
-        sb2.style.setProperty('background-color','transparent','important');
+        sb2.style.setProperty('background',sendBtnBg,'important');
+        sb2.style.setProperty('background-color',sendBtnBg,'important');
         sb2.style.setProperty('border','none','important');
-        sb2.style.setProperty('border-radius','6px','important');
-        sb2.style.setProperty('width','30px','important');
-        sb2.style.setProperty('height','30px','important');
-        sb2.style.setProperty('min-width','30px','important');
-        sb2.style.setProperty('max-width','30px','important');
+        sb2.style.setProperty('border-radius','50%','important');
+        sb2.style.setProperty('width','32px','important');
+        sb2.style.setProperty('height','32px','important');
+        sb2.style.setProperty('min-width','32px','important');
+        sb2.style.setProperty('max-width','32px','important');
         sb2.style.setProperty('padding','0','important');
         sb2.style.setProperty('flex-shrink','0','important');
         sb2.style.setProperty('display','flex','important');
         sb2.style.setProperty('align-items','center','important');
         sb2.style.setProperty('justify-content','center','important');
         sb2.style.setProperty('cursor','pointer','important');
-        sb2.style.setProperty('opacity','0.6','important');
+        sb2.style.setProperty('opacity','1','important');
+        sb2.style.setProperty('outline','none','important');
+        sb2.style.setProperty('box-shadow','none','important');
+        sb2.style.setProperty('transition','background .15s','important');
         sb2.querySelectorAll('svg,path,circle,rect').forEach(function(el){
-          el.style.setProperty('fill',txt,'important');
-          el.style.setProperty('stroke',txt,'important');
+          el.style.setProperty('fill',sendIconColor,'important');
+          el.style.setProperty('stroke',sendIconColor,'important');
         });
       }
     }
@@ -320,9 +558,14 @@ go();
         .replace("JSVAL_PRITXT",  priTxt)   # must come before JSVAL_PRI
         .replace("JSVAL_PRI",     pri)
         .replace("JSVAL_BORDER",  border)
-        .replace("JSVAL_MUTED",   muted)
-        .replace("JSVAL_INPUTBG", inputBg)
-        .replace("JSVAL_MAIBG",   bg)
+        .replace("JSVAL_MUTED",      muted)
+        .replace("JSVAL_INPUTBG",    inputBg)
+        .replace("JSVAL_MAIBG",      bg)
+        .replace("JSVAL_CHATINPUT",  chatInputBg)
+        .replace("JSVAL_SENDBTN",    sendBtnBg)
+        .replace("JSVAL_SENDICON",   sendIconColor)
+        .replace("JSVAL_PILLACTIVE", pillActive)
+        .replace("JSVAL_PILLACTIVETXT", pillActiveText)
     )
 
     components.html(f"<script>{_js}</script>", height=0, scrolling=False)
@@ -331,17 +574,18 @@ go();
 # ─── Copy-to-clipboard button ──────────────────────────────────────────────────
 def _copy_btn(text: str, idx: int):
     b64  = base64.b64encode(text.encode()).decode()
-    clr  = "#8b91b3"
-    ok   = "#22c55e"
-    bdr  = "rgba(128,128,128,.2)"
-    hover= "rgba(255,255,255,.06)"
+    t    = get_tokens()
+    clr  = t["muted"]
+    ok   = t["success"]
+    bdr  = t["border"]
+    hover= t["hover"]
     components.html(
         f"""<style>*{{margin:0;padding:0;box-sizing:border-box;
         font-family:'Inter',system-ui,sans-serif;}}
         button{{font-size:11px;padding:2px 9px;border-radius:5px;
         border:1px solid {bdr};background:transparent;cursor:pointer;
         color:{clr};transition:all .15s;display:inline-flex;align-items:center;gap:4px;}}
-        button:hover{{background:{hover};border-color:rgba(128,128,128,.35);}}
+        button:hover{{background:{hover};border-color:{clr}88;}}
         </style>
         <button id="cp{idx}" onclick="(function(){{
             navigator.clipboard.writeText(atob('{b64}')).then(function(){{
@@ -356,12 +600,14 @@ def _copy_btn(text: str, idx: int):
     )
 
 
+
 # ─── Session helpers ───────────────────────────────────────────────────────────
 def _new_chat():
     st.session_state.current_session_id = None
     st.session_state.messages           = []
     st.session_state.show_share         = False
     st.session_state.total_tokens       = 0
+    st.session_state.pending_prompt     = None
 
 def _ensure_session() -> str:
     if st.session_state.current_session_id is None:
@@ -381,6 +627,8 @@ def _load_session(sid: str):
     ) // 4
 
 def _send(text: str):
+    model       = st.session_state.get("model",       DEFAULT_MODEL)
+    temperature = float(st.session_state.get("temperature", 0.7))
     sid = _ensure_session()
     add_message(sid, "user", text)
     sessions = get_sessions(st.session_state.user["id"])
@@ -392,7 +640,8 @@ def _send(text: str):
             stream_chat(
                 build_messages(st.session_state.domain,
                                st.session_state.messages, text),
-                model=DEFAULT_MODEL,
+                model=model,
+                temperature=temperature,
             )
         )
     add_message(sid, "assistant", reply)
@@ -400,10 +649,10 @@ def _send(text: str):
         {"role": "user",      "content": text},
         {"role": "assistant", "content": reply},
     ]
-    # Token accounting (approx: 1 token ≈ 4 chars)
     st.session_state.total_tokens += (len(text) + len(reply)) // 4
 
 def _run_faq(domain: str, count: int, topic: str):
+    model  = st.session_state.get("model", DEFAULT_MODEL)
     sid    = _ensure_session()
     prompt = (f"Generate {count} FAQs – {DOMAIN_META[domain]['name']}"
               + (f"  (Topic: {topic})" if topic else ""))
@@ -412,12 +661,34 @@ def _run_faq(domain: str, count: int, topic: str):
     with st.chat_message("assistant", avatar="🤖"):
         result = st.write_stream(
             stream_chat(build_faq_messages(domain, count, topic),
-                        model=DEFAULT_MODEL, max_tokens=4096)
+                        model=model, max_tokens=4096)
         )
     add_message(sid, "assistant", result)
     st.session_state.messages.append({"role": "assistant", "content": result})
     update_session_title(sid, f"FAQs · {DOMAIN_META[domain]['name']}")
     st.session_state.total_tokens += (len(prompt) + len(result)) // 4
+
+
+def _regenerate():
+    """Remove last assistant + user pair, then re-send the user message."""
+    msgs = st.session_state.messages
+    if len(msgs) < 2 or msgs[-1]["role"] != "assistant":
+        return
+    last_user = msgs[-2]["content"] if msgs[-2]["role"] == "user" else None
+    if not last_user:
+        return
+    # Trim tokens estimate
+    st.session_state.total_tokens = max(
+        0, st.session_state.total_tokens - (len(msgs[-1]["content"]) + len(last_user)) // 4
+    )
+    # Remove from session state
+    st.session_state.messages = msgs[:-2]
+    # Remove from DB
+    sid = st.session_state.current_session_id
+    if sid:
+        delete_last_messages(sid, 2)
+    # Re-send
+    _send(last_user)
 
 # ─── Export helpers ────────────────────────────────────────────────────────────
 def _as_md():
@@ -449,6 +720,21 @@ def _as_json():
 # ══════════════════════════════════════════════════════════════════════════════
 def show_auth():
     inject_css()
+    _ensure_sidebar_open()
+    # Theme toggle lives in the sidebar (top-left) on the auth page too
+    with st.sidebar:
+        _logo_col, _theme_col = st.columns([5, 1])
+        with _logo_col:
+            st.markdown(
+                '<div style="padding:12px 14px 6px;">'
+                '<span class="sb-logo">🤖 FAQBot</span></div>',
+                unsafe_allow_html=True)
+        with _theme_col:
+            st.markdown('<div class="theme-toggle-col" style="padding-top:6px;"></div>', unsafe_allow_html=True)
+            _icon = "☀️" if st.session_state.theme == "dark" else "🌙"
+            if st.button(_icon, key="theme_toggle_auth"):
+                st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+                st.rerun()
     t = get_tokens()
 
     _, col, _ = st.columns([1, 1.4, 1])
@@ -504,6 +790,7 @@ def show_auth():
             )
 
         # ── Tab buttons (Sign In / Create Account) ────────────────────────────
+        st.markdown('<div class="auth-tabs-marker"></div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1:
             if st.button("🔐  Sign In", use_container_width=True,
@@ -578,28 +865,23 @@ def show_sidebar():
 
     with st.sidebar:
 
-        # ── TOP: Logo ─────────────────────────────────────────────────────────
-        st.markdown(
-            '<div style="padding:12px 14px 6px;">'
-            '<span class="sb-logo">🤖 FAQBot</span></div>',
-            unsafe_allow_html=True)
+        # ── TOP: Logo + theme toggle ─────────────────────────────────────────
+        _lc, _tc = st.columns([5, 1])
+        with _lc:
+            st.markdown(
+                '<div style="padding:12px 14px 6px;">'
+                '<span class="sb-logo">🤖 FAQBot</span></div>',
+                unsafe_allow_html=True)
+        with _tc:
+            st.markdown('<div class="theme-toggle-col"></div>', unsafe_allow_html=True)
+            _ticon = "☀️" if st.session_state.theme == "dark" else "🌙"
+            if st.button(_ticon, key="theme_toggle_sb"):
+                st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+                st.rerun()
 
         # ── New Chat ──────────────────────────────────────────────────────────
         if st.button("✏️  New chat", use_container_width=True, key="nc"):
             _new_chat(); st.rerun()
-
-        # ── Domain ────────────────────────────────────────────────────────────
-        st.markdown('<span class="sb-section-label">Domain</span>',
-                    unsafe_allow_html=True)
-        dl  = [DOMAIN_DISPLAY_NAMES[k] for k in DOMAIN_KEYS]
-        sel = st.selectbox("Domain", dl,
-                           index=DOMAIN_KEYS.index(st.session_state.domain),
-                           key="dsel", label_visibility="collapsed")
-        st.session_state.domain = DOMAIN_KEYS[dl.index(sel)]
-
-        # ── Generate FAQs ─────────────────────────────────────────────────────
-        if st.button("📋  Generate FAQs", use_container_width=True, key="faqsb"):
-            st.session_state.show_faq_dialog = True; st.rerun()
 
         # ── History ───────────────────────────────────────────────────────────
         st.markdown(
@@ -630,7 +912,7 @@ def show_sidebar():
                         st.session_state.show_share = False
                         st.rerun()
                 with cr:
-                    if st.button("×", key=f"d_{s['id']}", help="Delete"):
+                    if st.button("×", key=f"d_{s['id']}"):
                         delete_session(s["id"])
                         if cur == s["id"]:
                             st.session_state.current_session_id = None
@@ -642,14 +924,17 @@ def show_sidebar():
         initials = "".join(w[0].upper() for w in uname.split()[:2])
         st.markdown(
             f'<div class="sb-bottom">'
-            f'<div class="sb-user-row">'
-            f'<div class="sb-avatar">{initials}</div>'
-            f'<span class="sb-uname">{uname}</span>'
-            f'</div>'
-            f'<span class="sb-settings-label">⚙️ Settings</span>'
+            f'  <div class="sb-user-row">'
+            f'    <div class="sb-avatar">{initials}</div>'
+            f'    <span class="sb-uname">{uname}</span>'
+            f'  </div>'
+            f'  <div class="sb-menu-item">'
+            f'    <span class="sb-menu-icon">⚙️</span>'
+            f'    <span class="sb-menu-text">Settings</span>'
+            f'  </div>'
             f'</div>',
             unsafe_allow_html=True)
-        if st.button("↪  Sign out", use_container_width=True, key="so"):
+        if st.button("↪   Sign out", use_container_width=True, key="so"):
             logout(); st.rerun()
 
 
@@ -709,20 +994,37 @@ def show_export_bar():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# EMPTY STATE  (plain — just a centered prompt, no chips)
+# EMPTY STATE  — domain info + starter suggestion cards
 # ══════════════════════════════════════════════════════════════════════════════
 def show_empty():
-    t = get_tokens()
+    t      = get_tokens()
+    domain = st.session_state.domain
+    meta   = DOMAIN_META[domain]
+    parts  = meta["name"].split(" ", 1)
+    icon   = parts[0]
+    label  = parts[1] if len(parts) > 1 else meta["name"]
+
     st.markdown(
         f'<div style="display:flex;flex-direction:column;align-items:center;'
-        f'justify-content:center;height:55vh;">'
-        f'<div style="font-size:2rem;margin-bottom:10px;">🤖</div>'
-        f'<div style="font-size:1.4rem;font-weight:700;color:{t["text"]};margin-bottom:6px;">'
-        f'How can I help you?</div>'
-        f'<div style="font-size:.9rem;color:{t["muted"]};">Type a message below to start chatting.</div>'
+        f'padding:44px 24px 24px;text-align:center;">'
+        f'<div style="font-size:3rem;margin-bottom:12px;line-height:1;">{icon}</div>'
+        f'<div style="font-size:1.55rem;font-weight:800;color:{t["text"]};margin-bottom:8px;">'
+        f'{label}</div>'
+        f'<div style="font-size:.88rem;color:{t["muted"]};margin-bottom:32px;max-width:500px;'
+        f'line-height:1.6;">{meta["description"]}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    # 2 × 2 starter suggestion buttons
+    starters = meta["starters"][:4]
+    c1, c2   = st.columns(2, gap="small")
+    for i, starter in enumerate(starters):
+        col = c1 if i % 2 == 0 else c2
+        with col:
+            if st.button(starter, key=f"sq_{i}", use_container_width=True):
+                st.session_state.pending_prompt = starter
+                st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -736,8 +1038,16 @@ def show_chat():
     if st.session_state.show_faq_dialog:
         show_faq_dialog()
 
-    # Empty state
-    if st.session_state.current_session_id is None:
+    # ── Handle starter-card click (pending_prompt set by show_empty) ──────────
+    if pp := st.session_state.pop("pending_prompt", None):
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(pp)
+        _send(pp)
+        st.rerun()
+        return
+
+    # ── Empty state ───────────────────────────────────────────────────────────
+    if not st.session_state.messages:
         show_empty()
         if prompt := st.chat_input("Message FAQBot…"):
             with st.chat_message("user", avatar="👤"):
@@ -748,7 +1058,6 @@ def show_chat():
 
     # ── Active chat ───────────────────────────────────────────────────────────
     show_export_bar()
-    t = get_tokens()
 
     # Render messages with copy button
     for i, msg in enumerate(st.session_state.messages):
@@ -757,11 +1066,26 @@ def show_chat():
             st.markdown(msg["content"])
             _copy_btn(msg["content"], i)
 
-    # Token counter
+    # ── Regenerate button (shown after last assistant reply) ──────────────────
+    msgs = st.session_state.messages
+    if msgs and msgs[-1]["role"] == "assistant":
+        rc, _ = st.columns([1, 7])
+        with rc:
+            if st.button("↺  Regenerate", key="regen_btn",
+                         help="Re-generate the last response with the current model"):
+                _regenerate()
+                st.rerun()
+
+    # ── Token / model status bar ──────────────────────────────────────────────
     tokens = st.session_state.get("total_tokens", 0)
     if tokens > 0:
+        cur_model = st.session_state.get("model", DEFAULT_MODEL)
+        mlabel = next(
+            (l.split("✦")[0].strip() for l, m in AVAILABLE_MODELS.items() if m == cur_model),
+            cur_model,
+        )
         st.markdown(
-            f'<div class="token-bar">~{tokens:,} tokens used in this conversation</div>',
+            f'<div class="token-bar">~{tokens:,} tokens &nbsp;·&nbsp; {mlabel}</div>',
             unsafe_allow_html=True)
 
     if prompt := st.chat_input("Message FAQBot…"):
@@ -775,8 +1099,9 @@ def show_chat():
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
-    # ── Handle Google OAuth callback (?code= appended by Google redirect) ─────
     params = st.query_params
+
+    # ── Handle Google OAuth callback (?code= appended by Google redirect) ─────
     if not is_authenticated():
         if "code" in params:
             code = params["code"]

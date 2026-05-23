@@ -241,6 +241,19 @@ def add_message(session_id: str, role: str, content: str) -> str:
     return str(result.inserted_id)
 
 
+def delete_last_messages(session_id: str, n: int = 2) -> None:
+    """Delete the most-recent *n* messages from a session (used by Regenerate)."""
+    cursor = (
+        _db().messages
+        .find({"session_id": session_id})
+        .sort("timestamp", DESCENDING)
+        .limit(n)
+    )
+    ids = [doc["_id"] for doc in cursor]
+    if ids:
+        _db().messages.delete_many({"_id": {"$in": ids}})
+
+
 def get_messages(session_id: str) -> list[dict]:
     cursor = _db().messages.find(
         {"session_id": session_id}

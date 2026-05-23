@@ -1,5 +1,5 @@
 """
-styles.py — Layout CSS + CSS variable tokens for FAQBot (dark-only).
+styles.py — Layout CSS + CSS variable tokens for FAQBot (dark + light themes).
 
 Button styling is handled in JavaScript (_ensure_sidebar_open) via
 inline !important styles, which beat Streamlit's emotion-generated CSS.
@@ -9,21 +9,52 @@ chat input, scrollbar, containers.
 import streamlit as st
 
 DARK = dict(
-    bg="#0d0d0d",       sidebar="#111111",   card="#1a1a1a",
-    border="#2a2a2a",   primary="#ffffff",
-    text="#f0f0f0",     muted="#666666",     input="#1a1a1a",
-    hover="rgba(255,255,255,0.07)",
-    danger="#ef4444",   success="#22c55e",
-    shadow="rgba(0,0,0,0.6)",
-    pill_track="#222222",
-    pill_active="#ffffff",    pill_active_text="#000000",
-    pill_inactive_text="#777777",
-    btn_bg="#1e1e1e",   btn_border="#333333",
+    bg="#131314",       sidebar="#1e1f20",   card="#1e1f20",
+    border="#2d2f31",   primary="#e2e8f0",   primary_text="#131314",
+    text="#e3e3e3",     muted="#9ca3af",     input="#2a2b2d",
+    hover="rgba(255,255,255,0.08)",
+    danger="#f87171",   success="#4ade80",
+    shadow="rgba(0,0,0,0.4)",
+    pill_track="#2a2b2d",
+    pill_active="#333537",    pill_active_text="#ffffff",
+    pill_inactive_text="#9ca3af",
+    btn_bg="#2a2b2d",   btn_border="#3c4043",
+    chat_input="#2a2b2d",
+    send_btn="#e2e8f0",  send_btn_hover="#cbd5e1",  send_icon="#131314",
+    code_block_bg="#09090b",
 )
 
+LIGHT = dict(
+    bg="#f9f9fb",       sidebar="#ffffff",   card="#ffffff",
+    border="#e5e7eb",   primary="#1f2937",   primary_text="#ffffff",
+    text="#1f2937",     muted="#4b5563",     input="#f3f4f6",
+    hover="rgba(0,0,0,0.04)",
+    danger="#ef4444",   success="#22c55e",
+    shadow="rgba(0,0,0,0.05)",
+    pill_track="#e5e7eb",
+    pill_active="#e9eef6",    pill_active_text="#1f2937",
+    pill_inactive_text="#4b5563",
+    btn_bg="#f3f4f6",   btn_border="#e5e7eb",
+    chat_input="#f3f4f6",
+    send_btn="#1f2937",  send_btn_hover="#111827",  send_icon="#ffffff",
+    code_block_bg="#f3f4f6",
+)
 
-def inject_css() -> None:
-    c = DARK
+THEMES = {"dark": DARK, "light": LIGHT}
+
+
+def _cur_theme() -> str:
+    try:
+        return st.session_state.get("theme", "dark")
+    except Exception:
+        return "dark"
+
+
+def inject_css(theme: str | None = None) -> None:
+    if theme is None:
+        theme = _cur_theme()
+    c = THEMES.get(theme, DARK)
+
     st.markdown(f"""
 <style>
 
@@ -36,6 +67,7 @@ def inject_css() -> None:
     --t-card:              {c['card']};
     --t-border:            {c['border']};
     --t-primary:           {c['primary']};
+    --t-primary-text:      {c['primary_text']};
     --t-text:              {c['text']};
     --t-muted:             {c['muted']};
     --t-input:             {c['input']};
@@ -48,6 +80,30 @@ def inject_css() -> None:
     --t-pill-inactive-text:{c['pill_inactive_text']};
     --t-btn-bg:            {c['btn_bg']};
     --t-btn-border:        {c['btn_border']};
+    --t-code-block-bg:     {c['code_block_bg']};
+}}
+
+button[kind="primary"] {{
+    background-color: {c['primary']} !important;
+    border: 1px solid {c['primary']} !important;
+    color: {c['primary_text']} !important;
+    opacity: 1 !important;
+}}
+button[kind="primary"]:hover {{
+    background-color: {c['primary']} !important;
+    border: 1px solid {c['primary']} !important;
+    color: {c['primary_text']} !important;
+    opacity: 0.88 !important;
+}}
+button[kind="secondary"] {{
+    background-color: {c['btn_bg']} !important;
+    border: 1px solid {c['btn_border']} !important;
+    color: {c['text']} !important;
+}}
+button[kind="secondary"]:hover {{
+    background-color: {c['hover']} !important;
+    border: 1px solid {c['btn_border']} !important;
+    color: {c['text']} !important;
 }}
 
 /* ═══════════════════════════════════════════════════
@@ -63,7 +119,8 @@ html, body, .stApp,
 [data-testid="stBottom"],
 [data-testid="stBottomBlockContainer"] {{
     background-color: {c['bg']} !important;
-    border-top: 1px solid {c['border']} !important;
+    border-top: none !important;
+    box-shadow: none !important;
 }}
 
 /* ═══════════════════════════════════════════════════
@@ -75,9 +132,15 @@ section[data-testid="stSidebar"] {{
     border-right: 1px solid {c['border']} !important;
     min-width:  264px !important;
     width:      264px !important;
-    transform:  translateX(0) !important;
+    transform:  none !important;
+    will-change: auto !important;
     overflow-x: hidden !important;
     overflow-y: auto   !important;
+}}
+[data-testid="stSidebarUserContent"],
+section[data-testid="stSidebar"] div {{
+    transform:  none !important;
+    will-change: auto !important;
 }}
 section[data-testid="stSidebar"] > div {{
     padding-top:    0     !important;
@@ -87,7 +150,7 @@ section[data-testid="stSidebar"] > div {{
     display:        flex  !important;
     flex-direction: column !important;
     min-height:     100vh !important;
-    padding-bottom: 135px !important;
+    padding-bottom: 165px !important;
 }}
 
 /* Hide sidebar collapse controls */
@@ -101,36 +164,93 @@ section[data-testid="stSidebar"] header {{
     overflow: hidden !important;
 }}
 
-/* Transparent sidebar containers */
+/* Transparent sidebar containers — every wrapper must be transparent */
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
 section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"],
 section[data-testid="stSidebar"] [data-testid="column"],
+section[data-testid="stSidebar"] [data-testid="stButton"],
 section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {{
     background-color: transparent !important;
     background:       transparent !important;
+    border:           none !important;
+    box-shadow:       none !important;
+}}
+/* Logo row — vertically center logo text and theme toggle button */
+section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:first-of-type {{
+    align-items: center !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    gap: 0 !important;
 }}
 
 /* ═══════════════════════════════════════════════════
-   DOMAIN SELECTBOX
+   BASEWEB / STREAMLIT INTERNAL COMPONENT OVERRIDES
+   Covers inputs, selects, dropdowns — both themes
 ═══════════════════════════════════════════════════ */
-section[data-testid="stSidebar"] [data-testid="stSelectbox"],
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] > div,
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div,
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {{
-    background-color: {c['input']}  !important;
-    background:       {c['input']}  !important;
-    border:    1px solid {c['border']} !important;
-    border-radius:    8px !important;
-    color:            {c['text']}   !important;
-    min-height:       36px !important;
+/* Text inputs */
+[data-baseweb="input"],
+[data-baseweb="base-input"],
+[data-testid="stTextInputRootElement"] > div {{
+    background-color: {c['input']} !important;
+    background:       {c['input']} !important;
+    border-color:     {c['border']} !important;
+    border-radius:    9px !important;
 }}
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] span,
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] p {{
+[data-baseweb="input"] input,
+[data-baseweb="base-input"] input {{
+    color:        {c['text']} !important;
+    background:   transparent !important;
+    caret-color:  {c['text']} !important;
+}}
+/* Placeholder */
+[data-baseweb="input"] input::placeholder,
+[data-baseweb="base-input"] input::placeholder {{
+    color: {c['muted']} !important;
+}}
+/* Select / dropdown trigger */
+[data-baseweb="select"] > div:first-child,
+[data-baseweb="select"] > div > div:first-child {{
+    background-color: {c['input']} !important;
+    background:       {c['input']} !important;
+    border-color:     {c['border']} !important;
+}}
+[data-baseweb="select"] span,
+[data-baseweb="select"] [aria-selected],
+[data-baseweb="select"] div {{
     color: {c['text']} !important;
-    font-size: 13px !important;
 }}
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
+[data-baseweb="select"] svg {{
     fill: {c['muted']} !important;
+}}
+/* Dropdown option list */
+[data-baseweb="popover"] > div,
+[data-baseweb="menu"] {{
+    background-color: {c['card']} !important;
+    border:    1px solid {c['border']} !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 20px {c['shadow']} !important;
+}}
+[data-baseweb="menu"] [role="option"],
+[data-baseweb="menu"] li {{
+    color:      {c['text']} !important;
+    background: transparent !important;
+}}
+[data-baseweb="menu"] [role="option"]:hover,
+[data-baseweb="menu"] li:hover {{
+    background-color: {c['hover']} !important;
+}}
+/* Form wrappers */
+[data-testid="stForm"],
+[data-testid="stForm"] > div {{
+    background-color: transparent !important;
+    background:       transparent !important;
+    border-color:     {c['border']} !important;
+}}
+/* Tooltips */
+[data-baseweb="tooltip"] div {{
+    background-color: {c['card']} !important;
+    color:            {c['text']} !important;
+    border:    1px solid {c['border']} !important;
 }}
 
 /* ═══════════════════════════════════════════════════
@@ -156,79 +276,324 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {{
 [data-testid="stChatMessage"] li,
 [data-testid="stChatMessage"] h1,
 [data-testid="stChatMessage"] h2,
-[data-testid="stChatMessage"] h3,
-[data-testid="stChatMessage"] code {{
+[data-testid="stChatMessage"] h3 {{
     color: {c['text']} !important;
 }}
 
-/* ═══════════════════════════════════════════════════
-   CHAT INPUT  — Claude-style minimal
-═══════════════════════════════════════════════════ */
-[data-testid="stChatInput"],
-[data-testid="stChatInput"] > div {{
-    background: transparent !important;
-}}
-[data-testid="stChatInputContainer"] {{
+/* Global Inline Code Highlights - Soft & Theme-Aware */
+:not(pre) > code {{
     background-color: {c['input']} !important;
+    color: {c['text']} !important;
+    border: 1px solid {c['border']} !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    font-size: 0.88em !important;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace !important;
+}}
+
+/* Multi-line Code Blocks (pre) - Dark Black in Dark Theme */
+pre {{
+    background-color: {c['code_block_bg']} !important;
+    border: 1px solid {c['border']} !important;
+    border-radius: 8px !important;
+    padding: 14px !important;
+}}
+
+/* Ensure code inside pre doesn't inherit inline code styles */
+pre code, pre code * {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+}}
+
+/* ═══════════════════════════════════════════════════
+   CHAT INPUT  — ChatGPT style
+═══════════════════════════════════════════════════ */
+[data-testid="stChatInput"] {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+}}
+[data-testid="stChatInput"] > div,
+[data-testid="stChatInputContainer"] {{
+    background-color: {c['chat_input']} !important;
+    background:       {c['chat_input']} !important;
     border:           1px solid {c['border']} !important;
-    border-radius:    12px !important;
+    border-radius:    24px !important;
     box-shadow:       none !important;
-    padding:          10px 10px 10px 18px !important;
+    outline:          none !important;
+    padding:          8px 8px 8px 18px !important;
     align-items:      center !important;
     display:          flex !important;
     min-height:       48px !important;
-    max-height:       160px !important;
-    transition:       border-color .15s !important;
+    max-height:       200px !important;
+    gap:              12px !important;
 }}
+[data-testid="stChatInput"] > div:focus-within,
 [data-testid="stChatInputContainer"]:focus-within {{
-    border-color: #444444 !important;
-    box-shadow:   none !important;
+    background-color: {c['chat_input']} !important;
+    border:           1px solid {c['muted']} !important;
+    box-shadow:       none !important;
+    outline:          none !important;
+}}
+/* Kill every Streamlit focus ring and wrapper backgrounds */
+[data-testid="stChatInputContainer"] [data-testid="stTextInputRootElement"],
+[data-testid="stChatInputContainer"] [data-testid="stTextInputRootElement"] > div,
+[data-testid="stChatInputContainer"] [data-baseweb="textarea"],
+[data-testid="stChatInputContainer"] [data-baseweb="textarea"] > div,
+[data-testid="stChatInputContainer"] *,
+[data-testid="stChatInputContainer"] *:focus,
+[data-testid="stChatInputContainer"] *:focus-visible {{
+    outline:          none !important;
+    box-shadow:       none !important;
+    border:           none !important;
+    background:       transparent !important;
+    background-color: transparent !important;
 }}
 [data-testid="stChatInput"] textarea {{
     background:   transparent !important;
+    background-color: transparent !important;
     border:       none !important;
     box-shadow:   none !important;
     outline:      none !important;
-    font-size:    14px !important;
+    font-size:    15px !important;
     line-height:  1.6 !important;
     color:        {c['text']} !important;
-    padding:      0 !important;
-    max-height:   120px !important;
+    padding:      4px 0 !important;
+    max-height:   140px !important;
     overflow-y:   auto !important;
     resize:       none !important;
     flex:         1 !important;
 }}
-/* Send button — minimal, transparent, just the icon */
+[data-testid="stChatInput"] textarea::placeholder {{
+    color: {c['muted']} !important;
+}}
+[data-testid="stChatInput"] textarea:focus {{
+    outline:    none !important;
+    box-shadow: none !important;
+    border:     none !important;
+}}
+/* Send button — circular */
 button[data-testid="stChatInputSubmitButton"],
 [data-testid="stChatInputContainer"] button {{
-    background:       transparent !important;
-    background-color: transparent !important;
+    background:       {c['send_btn']} !important;
+    background-color: {c['send_btn']} !important;
     border:           none !important;
-    border-radius:    6px !important;
-    width:            30px !important;
-    height:           30px !important;
-    min-width:        30px !important;
-    max-width:        30px !important;
+    border-radius:    50% !important;
+    width:            34px !important;
+    height:           34px !important;
+    min-width:        34px !important;
+    max-width:        34px !important;
     padding:          0 !important;
     flex-shrink:      0 !important;
     display:          flex !important;
     align-items:      center !important;
     justify-content:  center !important;
     cursor:           pointer !important;
-    opacity:          0.6 !important;
-    transition:       opacity .15s !important;
+    outline:          none !important;
+    box-shadow:       none !important;
+    transition:       background .15s !important;
 }}
 button[data-testid="stChatInputSubmitButton"]:hover,
 [data-testid="stChatInputContainer"] button:hover {{
-    opacity: 1 !important;
-    background: rgba(255,255,255,0.08) !important;
+    background-color: {c['send_btn_hover']} !important;
 }}
 button[data-testid="stChatInputSubmitButton"] svg,
 button[data-testid="stChatInputSubmitButton"] path,
 [data-testid="stChatInputContainer"] button svg,
 [data-testid="stChatInputContainer"] button path {{
-    fill:   {c['text']} !important;
-    stroke: {c['text']} !important;
+    fill:   {c['send_icon']} !important;
+    stroke: {c['send_icon']} !important;
+}}
+
+/* ═══════════════════════════════════════════════════
+   STARTER SUGGESTION CARDS
+   (secondary baseButton styled to look like cards)
+═══════════════════════════════════════════════════ */
+.starter-grid button[data-testid="baseButton-secondary"],
+[data-testid="stHorizontalBlock"] button[data-testid="baseButton-secondary"] {{
+    text-align:    left !important;
+    padding:       14px 16px !important;
+    border-radius: 12px !important;
+    font-size:     .84rem !important;
+    font-weight:   400 !important;
+    line-height:   1.5 !important;
+    white-space:   normal !important;
+    min-height:    72px !important;
+    height:        auto !important;
+    align-items:   flex-start !important;
+}}
+
+/* ═══════════════════════════════════════════════════
+   BUTTONS — shape / layout  (standard specificity)
+   Background & color are set below with 1,2,2 weight.
+═══════════════════════════════════════════════════ */
+button[data-testid="baseButton-primary"] {{
+    border-radius: 8px !important;
+    font-weight:   600 !important;
+    box-shadow:    none !important;
+    outline:       none !important;
+}}
+button[data-testid="baseButton-secondary"] {{
+    border-radius: 8px !important;
+    font-weight:   500 !important;
+    box-shadow:    none !important;
+    outline:       none !important;
+}}
+/* Password / input visibility-toggle button */
+[data-testid="stTextInput"] button,
+[data-baseweb="input"] button {{
+    background:       transparent !important;
+    background-color: transparent !important;
+    border:           none !important;
+    box-shadow:       none !important;
+    outline:          none !important;
+    color:            {c['muted']} !important;
+}}
+[data-testid="stTextInput"] button svg,
+[data-testid="stTextInput"] button path,
+[data-baseweb="input"]      button svg,
+[data-baseweb="input"]      button path {{
+    fill:   {c['muted']} !important;
+    stroke: {c['muted']} !important;
+}}
+/* Labels / helper text color */
+label, [data-testid="stWidgetLabel"] p,
+[data-testid="stMarkdownContainer"] p {{
+    color: {c['text']} !important;
+}}
+
+/* ═══════════════════════════════════════════════════
+   BUTTONS — background / color / border
+   Uses #root (Streamlit's React mount id, specificity
+   1,0,0) so our rules always beat emotion CSS (0,x,y).
+   config.toml base="light" makes emotion produce light
+   CSS natively; dark mode overrides via these rules.
+═══════════════════════════════════════════════════ */
+
+/* All secondary buttons */
+#root button[data-testid="baseButton-secondary"] {{
+    background:       {c['btn_bg']}       !important;
+    background-color: {c['btn_bg']}       !important;
+    border:    1px solid {c['btn_border']} !important;
+    color:            {c['text']}         !important;
+}}
+#root button[data-testid="baseButton-secondary"] p,
+#root button[data-testid="baseButton-secondary"] span,
+#root button[data-testid="baseButton-secondary"] div {{
+    color:            {c['text']} !important;
+    background:       transparent !important;
+    background-color: transparent !important;
+}}
+
+/* All primary buttons */
+#root button[data-testid="baseButton-primary"] {{
+    background:       {c['primary']}          !important;
+    background-color: {c['primary']}          !important;
+    border:    1px solid {c['primary']}       !important;
+    color:            {c['primary_text']}     !important;
+}}
+#root button[data-testid="baseButton-primary"] p,
+#root button[data-testid="baseButton-primary"] span,
+#root button[data-testid="baseButton-primary"] div {{
+    color:            {c['primary_text']}     !important;
+    background:       transparent !important;
+    background-color: transparent !important;
+}}
+
+/* Sidebar buttons — transparent by default */
+#root section[data-testid="stSidebar"] button[data-testid^="baseButton"] {{
+    background:       transparent !important;
+    background-color: transparent !important;
+    border:           none !important;
+    box-shadow:       none !important;
+    color:            {c['text']} !important;
+}}
+
+/* Sidebar Theme Toggle Button — circular, centered, transparent with hover */
+
+/* Hide the empty marker div inside the toggle column */
+#root [data-testid="column"]:has(.theme-toggle-col) [data-testid="stMarkdownContainer"] {{
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}}
+/* Center the column itself vertically */
+#root [data-testid="column"]:has(.theme-toggle-col) {{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) [data-testid="stButton"] {{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"] {{
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    transition: background 0.15s ease !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"]:hover {{
+    background-color: {c['hover']} !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"]:active,
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"]:focus,
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"]:focus-visible,
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"]:focus-within {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"]:hover:active {{
+    background-color: {c['hover']} !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"] * {{
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    height: 100% !important;
+}}
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"] img,
+#root [data-testid="column"]:has(.theme-toggle-col) button[data-testid^="baseButton"] svg {{
+    width: 18px !important;
+    height: 18px !important;
+    max-width: 18px !important;
+    max-height: 18px !important;
+}}
+
+/* ── Transparent wrappers everywhere (sidebar + main) ── */
+#root [data-testid="stButton"],
+#root [data-testid="stHorizontalBlock"],
+#root [data-testid="stVerticalBlock"],
+#root [data-testid="column"] {{
+    background:       transparent !important;
+    background-color: transparent !important;
 }}
 
 /* ═══════════════════════════════════════════════════
@@ -299,23 +664,103 @@ input[type="text"], input[type="password"] {{
     padding:10px 14px 3px; display:block;
 }}
 .sb-user-row {{
-    display:flex; align-items:center; gap:10px;
-    padding:10px 14px 6px; background:{c['sidebar']};
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 10px 14px 8px !important;
+    background: transparent !important;
 }}
 .sb-avatar {{
-    width:30px; height:30px; border-radius:50%; flex-shrink:0;
-    background:{c['primary']};
-    display:flex; align-items:center; justify-content:center;
-    font-size:.72rem; font-weight:800; color:{c['pill_active_text']};
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    flex-shrink: 0 !important;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
 }}
 .sb-uname {{
-    font-size:.84rem; font-weight:600; color:{c['text']};
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    color: {c['text']} !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    flex: 1 !important;
 }}
-.sb-settings-label {{
-    font-size:.6rem; font-weight:700; letter-spacing:.1em;
-    color:{c['muted']}; text-transform:uppercase;
-    padding:5px 14px; display:block; background:{c['sidebar']};
+.sb-menu-item {{
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 8px 14px !important;
+    margin: 2px 14px !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    color: {c['muted']} !important;
+}}
+.sb-menu-item:hover {{
+    background-color: {c['hover']} !important;
+    color: {c['text']} !important;
+}}
+.sb-menu-icon {{
+    font-size: 1rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}}
+.sb-menu-text {{
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+}}
+.sb-bottom-wrap {{
+    position: fixed !important;
+    bottom: 52px !important;
+    left: 0 !important;
+    width: 264px !important;
+    box-sizing: border-box !important;
+    border-right: 1px solid {c['border']} !important;
+    z-index: 99 !important;
+    background-color: {c['sidebar']} !important;
+    border-top: 1px solid {c['border']} !important;
+    padding-top: 8px !important;
+}}
+.sb-signout-wrap {{
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 264px !important;
+    box-sizing: border-box !important;
+    border-right: 1px solid {c['border']} !important;
+    z-index: 100 !important;
+    background-color: {c['sidebar']} !important;
+    padding: 2px 14px 12px !important;
+    border: none !important;
+    box-shadow: none !important;
+}}
+.sb-signout-wrap button {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 8px !important;
+    color: {c['muted']} !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    padding: 8px 14px !important;
+    width: 100% !important;
+    transition: all 0.15s ease !important;
+}}
+.sb-signout-wrap button:hover {{
+    color: {c['danger']} !important;
+    background-color: {c['danger']}14 !important;
 }}
 .greet-wrap {{
     display:flex; flex-direction:column; align-items:center;
@@ -332,9 +777,98 @@ input[type="text"], input[type="password"] {{
     text-align:center; font-size:.72rem; color:{c['muted']};
     padding:4px 0 6px; letter-spacing:.02em;
 }}
+
+/* Auth Page Tab Buttons - Borderless opacity style */
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"] {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: none !important;
+    border-radius: 0px !important;
+    color: {c['text']} !important;
+    opacity: 0.4 !important;
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    padding: 8px 0px !important;
+    transition: opacity 0.15s ease !important;
+    box-shadow: none !important;
+    outline: none !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"] * {{
+    color: {c['text']} !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"] {{
+    opacity: 1 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"] * {{
+    color: {c['text']} !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"]:hover {{
+    opacity: 0.85 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"]:active,
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"]:focus {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"]:active,
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"]:focus {{
+    opacity: 1 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}}
+
+/* Auth Page Form Submit Button - Neutral Outline Style */
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"] {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: 1.5px solid {c['muted']} !important;
+    color: {c['text']} !important;
+    border-radius: 8px !important;
+    transition: all 0.15s ease !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"] * {{
+    color: {c['text']} !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"]:hover {{
+    background-color: {c['hover']} !important;
+    border-color: {c['text']} !important;
+}}
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"]:active,
+#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"]:focus {{
+    background: transparent !important;
+    background-color: transparent !important;
+    border: 1.5px solid {c['text']} !important;
+    box-shadow: none !important;
+    outline: none !important;
+}}
 </style>
+
 """, unsafe_allow_html=True)
 
 
-def get_tokens() -> dict:
-    return DARK
+def get_tokens(theme: str | None = None) -> dict:
+    if theme is None:
+        theme = _cur_theme()
+    return THEMES.get(theme, DARK)
