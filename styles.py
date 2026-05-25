@@ -361,6 +361,7 @@ pre code, pre code * {{
     font-size:    15px !important;
     line-height:  1.6 !important;
     color:        {c['text']} !important;
+    caret-color:  {c['text']} !important;
     padding:      4px 0 !important;
     max-height:   140px !important;
     overflow-y:   auto !important;
@@ -480,9 +481,7 @@ label, [data-testid="stWidgetLabel"] p,
     border:    1px solid {c['btn_border']} !important;
     color:            {c['text']}         !important;
 }}
-#root button[data-testid="baseButton-secondary"] p,
-#root button[data-testid="baseButton-secondary"] span,
-#root button[data-testid="baseButton-secondary"] div {{
+#root button[data-testid="baseButton-secondary"] * {{
     color:            {c['text']} !important;
     background:       transparent !important;
     background-color: transparent !important;
@@ -495,9 +494,7 @@ label, [data-testid="stWidgetLabel"] p,
     border:    1px solid {c['primary']}       !important;
     color:            {c['primary_text']}     !important;
 }}
-#root button[data-testid="baseButton-primary"] p,
-#root button[data-testid="baseButton-primary"] span,
-#root button[data-testid="baseButton-primary"] div {{
+#root button[data-testid="baseButton-primary"] * {{
     color:            {c['primary_text']}     !important;
     background:       transparent !important;
     background-color: transparent !important;
@@ -778,67 +775,45 @@ input[type="text"], input[type="password"] {{
     padding:4px 0 6px; letter-spacing:.02em;
 }}
 
-/* Auth Page Tab Buttons - Borderless opacity style */
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"] {{
+/* Auth Page Tab Buttons - Clean Borderless style */
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] button {{
     background: transparent !important;
     background-color: transparent !important;
     border: none !important;
-    border-bottom: none !important;
+    border-bottom: 3px solid transparent !important;
     border-radius: 0px !important;
     color: {c['text']} !important;
-    opacity: 0.4 !important;
+    opacity: 0.5 !important;
     font-size: 1.05rem !important;
-    font-weight: 600 !important;
+    font-weight: 500 !important;
     padding: 8px 0px !important;
-    transition: opacity 0.15s ease !important;
+    transition: all 0.15s ease !important;
     box-shadow: none !important;
     outline: none !important;
+    overflow: visible !important;
 }}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"] * {{
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] button * {{
     color: {c['text']} !important;
     background: transparent !important;
     background-color: transparent !important;
     font-size: 1.05rem !important;
-    font-weight: 600 !important;
+    font-weight: 500 !important;
 }}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"] {{
-    opacity: 1 !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] button:hover {{
+    opacity: 0.8 !important;
 }}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"] * {{
-    color: {c['text']} !important;
-    background: transparent !important;
-    background-color: transparent !important;
-}}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"]:hover {{
-    opacity: 0.85 !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-}}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"]:active,
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid^="baseButton"]:focus {{
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] button:active,
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] button:focus {{
     background: transparent !important;
     background-color: transparent !important;
     border: none !important;
     box-shadow: none !important;
     outline: none !important;
-}}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"]:active,
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stHorizontalBlock"] button[data-testid="baseButton-primary"]:focus {{
-    opacity: 1 !important;
-    background: transparent !important;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
 }}
 
-/* Auth Page Form Submit Button - Neutral Outline Style */
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"] {{
+/* Auth Page Form Submit Button - Premium outline style */
+#root [data-testid="stMain"] form button[data-testid^="baseButton"],
+#root .main form button[data-testid^="baseButton"] {{
     background: transparent !important;
     background-color: transparent !important;
     border: 1.5px solid {c['muted']} !important;
@@ -846,17 +821,21 @@ input[type="text"], input[type="password"] {{
     border-radius: 8px !important;
     transition: all 0.15s ease !important;
 }}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"] * {{
+#root [data-testid="stMain"] form button[data-testid^="baseButton"] *,
+#root .main form button[data-testid^="baseButton"] * {{
     color: {c['text']} !important;
     background: transparent !important;
     background-color: transparent !important;
 }}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"]:hover {{
+#root [data-testid="stMain"] form button[data-testid^="baseButton"]:hover,
+#root .main form button[data-testid^="baseButton"]:hover {{
     background-color: {c['hover']} !important;
     border-color: {c['text']} !important;
 }}
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"]:active,
-#root [data-testid="stVerticalBlock"]:has(.auth-tabs-marker) [data-testid="stForm"] button[data-testid="baseButton-primary"]:focus {{
+#root [data-testid="stMain"] form button[data-testid^="baseButton"]:active,
+#root [data-testid="stMain"] form button[data-testid^="baseButton"]:focus,
+#root .main form button[data-testid^="baseButton"]:active,
+#root .main form button[data-testid^="baseButton"]:focus {{
     background: transparent !important;
     background-color: transparent !important;
     border: 1.5px solid {c['text']} !important;

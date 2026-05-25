@@ -95,8 +95,13 @@ def _ensure_sidebar_open():
 (function(){
 var _ts=JSVAL_TS;
 function go(){
+  var d;
   try{
-    var d=window.parent.document;
+    d=window.parent.document;
+  }catch(e){
+    return;
+  }
+  try{
 
     /* Self-terminate if a newer render's JS is already running */
     var curTs=parseInt((d.body&&d.body.getAttribute('data-faqbot-ts'))||'0');
@@ -133,35 +138,11 @@ function go(){
         var inSignout=!!btn.closest('.sb-signout-wrap');
 
         var isAuthPage=!!d.querySelector('.auth-tabs-marker');
-        var isAuthTab=false;
         var isAuthFormSubmit=false;
         if(isAuthPage && !inSB){
-          if(btn.closest('[data-testid="stHorizontalBlock"]')){
-            isAuthTab=true;
-          } else if(btn.closest('[data-testid="stForm"]')){
+          if(btn.closest('[data-testid="stForm"]')){
             isAuthFormSubmit=true;
           }
-        }
-
-        if(isAuthTab){
-          S.setProperty('background','transparent','important');
-          S.setProperty('background-color','transparent','important');
-          S.setProperty('border','none','important');
-          S.setProperty('box-shadow','none','important');
-          S.setProperty('outline','none','important');
-          S.setProperty('border-radius','0px','important');
-          S.setProperty('font-size','1.05rem','important');
-          S.setProperty('font-weight','600','important');
-          S.setProperty('padding','8px 0px','important');
-          S.setProperty('opacity',isPri?'1':'0.4','important');
-          S.setProperty('color',txt,'important');
-
-          btn.querySelectorAll('*').forEach(function(el){
-            el.style.setProperty('color',txt,'important');
-            el.style.setProperty('background','transparent','important');
-            el.style.setProperty('background-color','transparent','important');
-          });
-          return;
         }
 
         if(isAuthFormSubmit){
@@ -473,6 +454,7 @@ function go(){
         }
 
         ta.style.setProperty('color',txt,'important');
+        ta.style.setProperty('caret-color',txt,'important');
         ta.style.setProperty('background','transparent','important');
         ta.style.setProperty('background-color','transparent','important');
         ta.style.setProperty('max-height','140px','important');
@@ -791,6 +773,30 @@ def show_auth():
 
         # ── Tab buttons (Sign In / Create Account) ────────────────────────────
         st.markdown('<div class="auth-tabs-marker"></div>', unsafe_allow_html=True)
+        
+        # Dynamically highlight the selected tab and dim the unselected tab
+        _active = "first-child" if st.session_state.auth_tab == "login" else "last-child"
+        _inactive = "last-child" if st.session_state.auth_tab == "login" else "first-child"
+        st.markdown(f"""
+<style>
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:{_active} button {{
+    opacity: 1 !important;
+    border-bottom: 3px solid {t['primary']} !important;
+}}
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:{_active} button * {{
+    color: {t['text']} !important;
+    font-weight: 700 !important;
+}}
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:{_inactive} button {{
+    opacity: 0.5 !important;
+    border-bottom: 3px solid transparent !important;
+}}
+#root [data-testid="stMain"] [data-testid="stHorizontalBlock"] > div:{_inactive} button * {{
+    color: {t['muted']} !important;
+    font-weight: 500 !important;
+}}
+</style>
+""", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1:
             if st.button("🔐  Sign In", use_container_width=True,
